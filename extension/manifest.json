@@ -25,6 +25,14 @@
       "matches": ["<all_urls>"],
       "js": ["content.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "http://localhost:5173/*",
+        "http://localhost:5174/*"
+      ],
+      "js": ["content-sync.js"],
+      "run_at": "document_end"
     }
   ],
   "commands": {
@@ -34,6 +42,13 @@
         "mac": "Command+Shift+S"
       },
       "description": "Save current page to Synapse"
+    },
+    "open-sidebar": {
+      "suggested_key": {
+        "default": "Ctrl+Q",
+        "mac": "Command+Q"
+      },
+      "description": "Open Synapse smart suggestions sidebar"
     }
   }
 }

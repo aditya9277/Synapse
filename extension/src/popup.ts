@@ -17,6 +17,46 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (!token) {
     loginPrompt.style.display = 'block';
     mainForm.style.display = 'none';
+    
+    // Handle sync button
+    document.getElementById('sync-token')?.addEventListener('click', async () => {
+      const syncBtn = document.getElementById('sync-token') as HTMLButtonElement;
+      syncBtn.textContent = '🔄 Syncing...';
+      syncBtn.disabled = true;
+      
+      // Query for Synapse tabs
+      const synapseTabs = await chrome.tabs.query({ 
+        url: ['http://localhost:5173/*', 'http://localhost:5174/*'] 
+      });
+      
+      if (synapseTabs.length > 0) {
+        // Send sync message to the content script
+        chrome.tabs.sendMessage(synapseTabs[0].id!, { action: 'syncToken' }, async (response) => {
+          // Wait a moment for sync to complete
+          setTimeout(async () => {
+            const newToken = await getAuthToken();
+            if (newToken) {
+              loginPrompt.style.display = 'none';
+              mainForm.style.display = 'block';
+              location.reload();
+            } else {
+              syncBtn.textContent = '❌ Not logged in. Please login first.';
+              setTimeout(() => {
+                syncBtn.textContent = '🔄 Already Logged In? Sync Now';
+                syncBtn.disabled = false;
+              }, 2000);
+            }
+          }, 500);
+        });
+      } else {
+        syncBtn.textContent = '❌ Please open Synapse dashboard first';
+        setTimeout(() => {
+          syncBtn.textContent = '🔄 Already Logged In? Sync Now';
+          syncBtn.disabled = false;
+        }, 2000);
+      }
+    });
+    
     return;
   }
 

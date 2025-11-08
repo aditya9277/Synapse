@@ -5,7 +5,9 @@ module.exports = {
   entry: {
     background: './src/background.ts',
     content: './src/content.ts',
-    popup: './src/popup.ts'
+    'content-sync': './src/content-sync.ts',
+    popup: './src/popup.ts',
+    sidebar: './src/sidebar.ts'
   },
   output: {
     path: path.resolve(__dirname, 'dist'),
@@ -28,6 +30,7 @@ module.exports = {
       patterns: [
         { from: 'manifest.json', to: 'manifest.json' },
         { from: 'popup.html', to: 'popup.html' },
+        { from: 'sidebar.html', to: 'sidebar.html' },
         { from: 'icons', to: 'icons', noErrorOnMissing: true }
       ]
     })

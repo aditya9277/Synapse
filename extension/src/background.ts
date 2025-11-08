@@ -3,99 +3,202 @@ const API_URL = 'http://localhost:3000/api';
 // Track recent saves for undo functionality
 const recentSaves: Map<string, { contentId: string; data: any }> = new Map();
 
+// Check if Chrome APIs are available
+const isAPIAvailable = (api: any) => {
+  return typeof api !== 'undefined' && api !== null;
+};
+
 // Create enhanced context menu
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({
-    id: 'save-page',
-    title: '💾 Save Page to Synapse',
-    contexts: ['page']
-  });
+  console.log('Synapse extension installed, creating context menus...');
+  
+  if (!isAPIAvailable(chrome.contextMenus)) {
+    console.error('Context menus API not available');
+    return;
+  }
+  
+  try {
+    chrome.contextMenus.removeAll(() => {
+      chrome.contextMenus.create({
+        id: 'save-page',
+        title: '💾 Save Page to Synapse',
+        contexts: ['page']
+      });
 
-  chrome.contextMenus.create({
-    id: 'save-selection',
-    title: '✂️ Save Selection',
-    contexts: ['selection']
-  });
+      chrome.contextMenus.create({
+        id: 'save-selection',
+        title: '✂️ Save Selection',
+        contexts: ['selection']
+      });
 
-  chrome.contextMenus.create({
-    id: 'save-link',
-    title: '🔗 Save Link',
-    contexts: ['link']
-  });
+      chrome.contextMenus.create({
+        id: 'save-link',
+        title: '🔗 Save Link',
+        contexts: ['link']
+      });
 
-  chrome.contextMenus.create({
-    id: 'save-image',
-    title: '🖼️ Save Image',
-    contexts: ['image']
-  });
+      chrome.contextMenus.create({
+        id: 'save-image',
+        title: '🖼️ Save Image',
+        contexts: ['image']
+      });
 
-  chrome.contextMenus.create({
-    id: 'separator',
-    type: 'separator',
-    contexts: ['all']
-  });
+      chrome.contextMenus.create({
+        id: 'separator',
+        type: 'separator',
+        contexts: ['selection']
+      });
 
-  chrome.contextMenus.create({
-    id: 'save-as-note',
-    title: '📝 Save Selection as Note',
-    contexts: ['selection']
-  });
+      chrome.contextMenus.create({
+        id: 'save-as-note',
+        title: '📝 Save Selection as Note',
+        contexts: ['selection']
+      });
 
-  chrome.contextMenus.create({
-    id: 'save-as-quote',
-    title: '💬 Save as Quote',
-    contexts: ['selection']
-  });
+      chrome.contextMenus.create({
+        id: 'save-as-quote',
+        title: '💬 Save as Quote',
+        contexts: ['selection']
+      });
+      
+      console.log('Context menus created successfully');
+    });
+  } catch (error) {
+    console.error('Error creating context menus:', error);
+  }
 });
 
 // Handle context menu clicks with enhanced functionality
-chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-  const token = await getAuthToken();
-  
-  if (!token) {
-    showLoginNotification();
-    return;
-  }
+if (isAPIAvailable(chrome.contextMenus)) {
+  chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+    console.log('Context menu clicked:', info.menuItemId, info);
+    
+    const token = await getAuthToken();
+    
+    if (!token) {
+      console.log('No token found, showing login notification');
+      showLoginNotification();
+      return;
+    }
 
-  // Show saving notification
-  chrome.notifications.create({
-    type: 'basic',
-    iconUrl: 'icon.png',
-    title: '⏳ Saving to Synapse...',
-    message: 'Extracting content and metadata...',
-    silent: true
-  }, (notificationId) => {
-    extractContentData(info, tab).then(contentData => {
+    console.log('Token found, proceeding with save...');
+
+    try {
+      let contentData: any = await extractContentData(info, tab);
+      console.log('Content data extracted:', contentData);
+      
+      // Show inline saving toast
+      if (tab?.id && isAPIAvailable(chrome.scripting)) {
+        chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: () => {
+            // Remove existing toasts
+            const existingToasts = document.querySelectorAll('[id^="synapse-"]');
+            existingToasts.forEach(toast => toast.remove());
+            
+            const toast = document.createElement('div');
+            toast.id = 'synapse-saving-toast';
+            toast.textContent = '⏳ Saving to Synapse...';
+            toast.style.cssText = `
+              position: fixed; top: 20px; right: 20px; z-index: 999999;
+              background: #2196F3; color: white; padding: 16px 24px;
+              border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+              font-family: system-ui; font-size: 14px; font-weight: 500;
+              transition: all 0.3s ease;
+            `;
+            document.body.appendChild(toast);
+          }
+        });
+      }
+      
       // Save content to backend
-      return saveContent(token, contentData).then(savedContent => {
-        // Store for undo
-        recentSaves.set(notificationId, { 
-          contentId: savedContent.id, 
-          data: contentData 
+      const savedContent = await saveContent(token, contentData);
+      console.log('Content saved successfully:', savedContent);
+      
+      // Show success toast
+      if (tab?.id && isAPIAvailable(chrome.scripting)) {
+        chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: (title: string) => {
+            const existingToast = document.getElementById('synapse-saving-toast');
+            if (existingToast) existingToast.remove();
+            
+            const toast = document.createElement('div');
+            toast.innerHTML = `✅ Saved "${title.substring(0, 30)}..." to Synapse!`;
+            toast.style.cssText = `
+              position: fixed; top: 20px; right: 20px; z-index: 999999;
+              background: #4CAF50; color: white; padding: 16px 24px;
+              border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+              font-family: system-ui; font-size: 14px; font-weight: 500;
+              transition: all 0.3s ease;
+            `;
+            document.body.appendChild(toast);
+            setTimeout(() => {
+              toast.style.opacity = '0';
+              setTimeout(() => toast.remove(), 300);
+            }, 3000);
+          },
+          args: [contentData.title]
         });
+      }
 
-        // Clear the loading notification
-        chrome.notifications.clear(notificationId);
+      // Show Chrome notification if available
+      if (isAPIAvailable(chrome.notifications)) {
+        try {
+          chrome.notifications.create({
+            type: 'basic',
+            iconUrl: 'icon.png',
+            title: '✅ Saved to Synapse!',
+            message: `"${contentData.title?.substring(0, 50)}..." saved successfully`,
+            buttons: [
+              { title: '👁️ View' },
+              { title: '↩️ Undo' }
+            ],
+            requireInteraction: false
+          }, (notificationId) => {
+            if (chrome.runtime.lastError) {
+              console.warn('Notification error:', chrome.runtime.lastError);
+            } else {
+              recentSaves.set(notificationId, { 
+                contentId: savedContent.id, 
+                data: contentData 
+              });
+            }
+          });
+        } catch (error) {
+          console.warn('Failed to create notification:', error);
+        }
+      }
 
-        // Show success notification with actions
-        chrome.notifications.create({
-          type: 'basic',
-          iconUrl: 'icon.png',
-          title: '✅ Saved to Synapse!',
-          message: `"${contentData.title?.substring(0, 50)}..." saved successfully`,
-          buttons: [
-            { title: '👁️ View' },
-            { title: '↩️ Undo' }
-          ],
-          requireInteraction: true
+    } catch (error: any) {
+      console.error('Error saving content:', error);
+      
+      // Show error toast
+      if (tab?.id && isAPIAvailable(chrome.scripting)) {
+        chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: (errorMsg: string) => {
+            const existingToast = document.getElementById('synapse-saving-toast');
+            if (existingToast) existingToast.remove();
+            
+            const toast = document.createElement('div');
+            toast.innerHTML = `❌ Failed to save: ${errorMsg}`;
+            toast.style.cssText = `
+              position: fixed; top: 20px; right: 20px; z-index: 999999;
+              background: #f44336; color: white; padding: 16px 24px;
+              border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+              font-family: system-ui; font-size: 14px; font-weight: 500;
+            `;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+          },
+          args: [error.message || 'Unknown error']
         });
-      });
-    }).catch((error: Error) => {
-      chrome.notifications.clear(notificationId);
+      }
       showErrorNotification(error.message);
-    });
+    }
   });
-});
+}
 
 // Enhanced content extraction
 async function extractContentData(info: chrome.contextMenus.OnClickData, tab: chrome.tabs.Tab | undefined): Promise<any> {
@@ -255,65 +358,99 @@ function extractImageName(url: string | undefined): string | null {
 }
 
 // Handle keyboard shortcut
-chrome.commands.onCommand.addListener(async (command) => {
-  if (command === 'save-page') {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    const token = await getAuthToken();
-    
-    if (!token) {
-      showLoginNotification();
-      return;
+if (isAPIAvailable(chrome.commands)) {
+  chrome.commands.onCommand.addListener(async (command) => {
+    if (command === 'save-page') {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const token = await getAuthToken();
+      
+      if (!token) {
+        showLoginNotification();
+        return;
+      }
+
+      // Show inline notification
+      if (tab?.id && isAPIAvailable(chrome.scripting)) {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: () => {
+            const toast = document.createElement('div');
+            toast.textContent = '⏳ Saving to Synapse...';
+            toast.style.cssText = `
+              position: fixed; top: 20px; right: 20px; z-index: 999999;
+              background: #2196F3; color: white; padding: 16px 24px;
+              border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+              font-family: system-ui; font-size: 14px; font-weight: 500;
+            `;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 2000);
+          }
+        });
+      }
+
+      const pageData = await getPageMetadata(tab.id);
+      await saveContent(token, {
+        type: 'URL',
+        title: tab.title || 'Untitled',
+        url: tab.url,
+        description: pageData?.description,
+        thumbnailUrl: pageData?.image,
+        source: 'chrome-extension-keyboard'
+      });
+
+      // Show success toast
+      if (tab?.id && isAPIAvailable(chrome.scripting)) {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: () => {
+            const toast = document.createElement('div');
+            toast.innerHTML = '✅ Saved to Synapse!';
+            toast.style.cssText = `
+              position: fixed; top: 20px; right: 20px; z-index: 999999;
+              background: #4CAF50; color: white; padding: 16px 24px;
+              border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+              font-family: system-ui; font-size: 14px; font-weight: 500;
+              transition: all 0.3s ease;
+            `;
+            document.body.appendChild(toast);
+            setTimeout(() => {
+              toast.style.opacity = '0';
+              setTimeout(() => toast.remove(), 300);
+            }, 2500);
+          }
+        });
+      }
+    } else if (command === 'open-sidebar') {
+      // Try to open the sidebar panel (if supported), otherwise open as popup
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (chrome.sidePanel && tab.windowId) {
+          chrome.sidePanel.open({ windowId: tab.windowId });
+        } else {
+          // Fallback: Open sidebar as a new tab
+          chrome.tabs.create({ 
+            url: chrome.runtime.getURL('sidebar.html'),
+            active: false,
+            index: tab.index + 1
+          });
+        }
+      } catch (error) {
+        console.error('Failed to open sidebar:', error);
+        // Final fallback: Open as popup window
+        if (isAPIAvailable(chrome.windows)) {
+          chrome.windows.create({
+            url: chrome.runtime.getURL('sidebar.html'),
+            type: 'popup',
+            width: 400,
+            height: 600,
+            left: 100,
+            top: 100
+          });
+        }
+      }
     }
-
-    // Show inline notification
-    await chrome.scripting.executeScript({
-      target: { tabId: tab.id! },
-      func: () => {
-        const toast = document.createElement('div');
-        toast.textContent = '⏳ Saving to Synapse...';
-        toast.style.cssText = `
-          position: fixed; top: 20px; right: 20px; z-index: 999999;
-          background: #2196F3; color: white; padding: 16px 24px;
-          border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-          font-family: system-ui; font-size: 14px; font-weight: 500;
-        `;
-        document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 2000);
-      }
-    });
-
-    const pageData = await getPageMetadata(tab.id);
-    await saveContent(token, {
-      type: 'URL',
-      title: tab.title || 'Untitled',
-      url: tab.url,
-      description: pageData?.description,
-      thumbnailUrl: pageData?.image,
-      source: 'chrome-extension-keyboard'
-    });
-
-    // Show success toast
-    await chrome.scripting.executeScript({
-      target: { tabId: tab.id! },
-      func: () => {
-        const toast = document.createElement('div');
-        toast.innerHTML = '✅ Saved to Synapse!';
-        toast.style.cssText = `
-          position: fixed; top: 20px; right: 20px; z-index: 999999;
-          background: #4CAF50; color: white; padding: 16px 24px;
-          border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-          font-family: system-ui; font-size: 14px; font-weight: 500;
-          animation: slideIn 0.3s ease;
-        `;
-        document.body.appendChild(toast);
-        setTimeout(() => {
-          toast.style.animation = 'slideOut 0.3s ease';
-          setTimeout(() => toast.remove(), 300);
-        }, 2500);
-      }
-    });
-  }
-});
+  });
+}
 
 // Helper functions
 async function getAuthToken(): Promise<string | null> {
@@ -355,63 +492,81 @@ async function deleteContent(token: string, contentId: string): Promise<void> {
 }
 
 function showLoginNotification() {
-  chrome.notifications.create({
-    type: 'basic',
-    iconUrl: 'icon.png',
-    title: '🔐 Login Required',
-    message: 'Please login to Synapse to save content',
-    buttons: [{ title: 'Login Now' }],
-    requireInteraction: true
-  });
+  if (isAPIAvailable(chrome.notifications)) {
+    try {
+      chrome.notifications.create({
+        type: 'basic',
+        iconUrl: 'icon.png',
+        title: '🔐 Login Required',
+        message: 'Please login to Synapse to save content',
+        buttons: [{ title: 'Login Now' }],
+        requireInteraction: true
+      });
+    } catch (error) {
+      console.warn('Failed to show login notification:', error);
+    }
+  }
 }
 
 function showErrorNotification(message: string) {
-  chrome.notifications.create({
-    type: 'basic',
-    iconUrl: 'icon.png',
-    title: '❌ Save Failed',
-    message: message || 'Could not save to Synapse. Please try again.',
-    requireInteraction: false
-  });
-}
-
-// Handle notification button clicks
-chrome.notifications.onButtonClicked.addListener(async (notificationId, buttonIndex) => {
-  if (buttonIndex === 0) {
-    // View button - open dashboard
-    chrome.tabs.create({ url: 'http://localhost:5173/dashboard' });
-  } else if (buttonIndex === 1) {
-    // Undo button
-    const saved = recentSaves.get(notificationId);
-    if (saved) {
-      const token = await getAuthToken();
-      if (token) {
-        try {
-          await deleteContent(token, saved.contentId);
-          chrome.notifications.create({
-            type: 'basic',
-            iconUrl: 'icon.png',
-            title: '↩️ Undone',
-            message: 'Content removed from Synapse',
-            silent: true
-          });
-          recentSaves.delete(notificationId);
-        } catch (error) {
-          showErrorNotification('Could not undo save');
-        }
-      }
+  if (isAPIAvailable(chrome.notifications)) {
+    try {
+      chrome.notifications.create({
+        type: 'basic',
+        iconUrl: 'icon.png',
+        title: '❌ Save Failed',
+        message: message || 'Could not save to Synapse. Please try again.',
+        requireInteraction: false
+      });
+    } catch (error) {
+      console.warn('Failed to show error notification:', error);
     }
   }
-});
+}
 
-// Handle notification clicks
-chrome.notifications.onClicked.addListener((notificationId) => {
-  if (notificationId.includes('login')) {
-    chrome.tabs.create({ url: 'http://localhost:5173/login' });
-  } else {
-    chrome.tabs.create({ url: 'http://localhost:5173/dashboard' });
+// Handle notification button clicks (with safety check)
+if (isAPIAvailable(chrome.notifications)) {
+  try {
+    chrome.notifications.onButtonClicked.addListener(async (notificationId, buttonIndex) => {
+      if (buttonIndex === 0) {
+        // View button - open dashboard
+        chrome.tabs.create({ url: 'http://localhost:5173/dashboard' });
+      } else if (buttonIndex === 1) {
+        // Undo button
+        const saved = recentSaves.get(notificationId);
+        if (saved) {
+          const token = await getAuthToken();
+          if (token) {
+            try {
+              await deleteContent(token, saved.contentId);
+              chrome.notifications.create({
+                type: 'basic',
+                iconUrl: 'icon.png',
+                title: '↩️ Undone',
+                message: 'Content removed from Synapse',
+                silent: true
+              });
+              recentSaves.delete(notificationId);
+            } catch (error) {
+              showErrorNotification('Could not undo save');
+            }
+          }
+        }
+      }
+    });
+
+    // Handle notification clicks
+    chrome.notifications.onClicked.addListener((notificationId) => {
+      if (notificationId.includes('login')) {
+        chrome.tabs.create({ url: 'http://localhost:5173/login' });
+      } else {
+        chrome.tabs.create({ url: 'http://localhost:5173/dashboard' });
+      }
+    });
+  } catch (error) {
+    console.warn('Failed to set up notification handlers:', error);
   }
-});
+}
 
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {

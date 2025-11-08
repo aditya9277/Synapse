@@ -144,10 +144,20 @@
 
       <div id="login-prompt" style="display: none">
         <div class="login-prompt">
-          <p>Please login to save content</p>
-          <a href="http://localhost:5173/login" target="_blank"
+          <p style="margin-bottom: 12px">Please login to save content</p>
+          <a
+            href="http://localhost:5173/login"
+            target="_blank"
+            class="btn"
+            style="display: inline-block; text-decoration: none"
             >Login to Synapse</a
           >
+          <button
+            class="btn"
+            id="sync-token"
+            style="background: #4caf50; margin-top: 8px">
+            🔄 Already Logged In? Sync Now
+          </button>
         </div>
       </div>
 
