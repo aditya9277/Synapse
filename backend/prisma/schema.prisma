@@ -1,0 +1,163 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  passwordHash  String   @map("password_hash")
+  firstName     String?  @map("first_name")
+  lastName      String?  @map("last_name")
+  preferences   Json     @default("{}")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  contents      Content[]
+  collections   Collection[]
+  tags          Tag[]
+  shares        Share[]      @relation("SharedBy")
+  sharedWith    Share[]      @relation("SharedWith")
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+enum ContentType {
+  URL
+  ARTICLE
+  PRODUCT
+  VIDEO
+  IMAGE
+  NOTE
+  TODO
+  CODE
+  PDF
+  SCREENSHOT
+  HANDWRITTEN
+  AUDIO
+  BOOKMARK
+}
+
+model Content {
+  id          String      @id @default(uuid())
+  userId      String      @map("user_id")
+  type        ContentType
+  title       String
+  description String?     @db.Text
+  url         String?
+  contentText String?     @map("content_text") @db.Text
+  metadata    Json        @default("{}")
+  tags        String[]
+  category    String?
+  priority    Int         @default(0)
+  thumbnailUrl String?    @map("thumbnail_url")
+  filePath    String?     @map("file_path")
+  embedding   String?     @db.Text
+  source      String?
+  isFavorite  Boolean     @default(false) @map("is_favorite")
+  isArchived  Boolean     @default(false) @map("is_archived")
+  accessCount Int         @default(0) @map("access_count")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+  accessedAt  DateTime?   @map("accessed_at")
+
+  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  collectionItems   CollectionItem[]
+  shares            Share[]
+
+  @@index([userId])
+  @@index([type])
+  @@index([createdAt])
+  @@index([tags])
+  @@map("contents")
+}
+
+model Collection {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  name        String
+  description String?  @db.Text
+  color       String   @default("#1976d2")
+  icon        String   @default("folder")
+  visibility  String   @default("private")
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user  User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items CollectionItem[]
+
+  @@index([userId])
+  @@map("collections")
+}
+
+model CollectionItem {
+  id           String     @id @default(uuid())
+  collectionId String     @map("collection_id")
+  contentId    String     @map("content_id")
+  order        Int        @default(0)
+  addedAt      DateTime   @default(now()) @map("added_at")
+
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  content    Content    @relation(fields: [contentId], references: [id], onDelete: Cascade)
+
+  @@unique([collectionId, contentId])
+  @@index([collectionId])
+  @@index([contentId])
+  @@map("collection_items")
+}
+
+model Tag {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  name       String
+  color      String   @default("#757575")
+  usageCount Int      @default(0) @map("usage_count")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@map("tags")
+}
+
+model Share {
+  id          String    @id @default(uuid())
+  contentId   String    @map("content_id")
+  sharedBy    String    @map("shared_by")
+  sharedWith  String    @map("shared_with")
+  permissions String[]  @default(["view"])
+  expiresAt   DateTime? @map("expires_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  content       Content @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  sharedByUser  User    @relation("SharedBy", fields: [sharedBy], references: [id], onDelete: Cascade)
+  sharedWithUser User   @relation("SharedWith", fields: [sharedWith], references: [id], onDelete: Cascade)
+
+  @@index([contentId])
+  @@index([sharedBy])
+  @@index([sharedWith])
+  @@map("shares")
+}

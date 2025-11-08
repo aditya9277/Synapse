@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Project Synapse</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        width: 350px;
+        padding: 16px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          sans-serif;
+      }
+
+      .header {
+        text-align: center;
+        margin-bottom: 16px;
+      }
+
+      h1 {
+        font-size: 20px;
+        margin-bottom: 4px;
+      }
+
+      .subtitle {
+        font-size: 12px;
+        color: #666;
+      }
+
+      .form-group {
+        margin-bottom: 12px;
+      }
+
+      label {
+        display: block;
+        font-size: 12px;
+        font-weight: 600;
+        margin-bottom: 4px;
+        color: #333;
+      }
+
+      input,
+      textarea,
+      select {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 13px;
+        font-family: inherit;
+      }
+
+      textarea {
+        resize: vertical;
+        min-height: 80px;
+      }
+
+      .btn {
+        width: 100%;
+        padding: 10px;
+        background: #1976d2;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        margin-top: 8px;
+      }
+
+      .btn:hover {
+        background: #1565c0;
+      }
+
+      .btn:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+      }
+
+      .status {
+        margin-top: 12px;
+        padding: 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        display: none;
+      }
+
+      .status.success {
+        background: #e8f5e9;
+        color: #2e7d32;
+        display: block;
+      }
+
+      .status.error {
+        background: #ffebee;
+        color: #c62828;
+        display: block;
+      }
+
+      .login-prompt {
+        text-align: center;
+        padding: 20px;
+      }
+
+      .login-prompt a {
+        color: #1976d2;
+        text-decoration: none;
+        font-weight: 600;
+      }
+
+      .quick-actions {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 16px;
+      }
+
+      .quick-btn {
+        flex: 1;
+        padding: 8px;
+        background: #f5f5f5;
+        border: none;
+        border-radius: 4px;
+        font-size: 11px;
+        cursor: pointer;
+      }
+
+      .quick-btn:hover {
+        background: #e0e0e0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div class="header">
+        <h1>🧠 Project Synapse</h1>
+        <p class="subtitle">Your Intelligent Second Brain</p>
+      </div>
+
+      <div id="login-prompt" style="display: none">
+        <div class="login-prompt">
+          <p>Please login to save content</p>
+          <a href="http://localhost:5173/login" target="_blank"
+            >Login to Synapse</a
+          >
+        </div>
+      </div>
+
+      <div id="main-form">
+        <div class="quick-actions">
+          <button class="quick-btn" id="save-page">Save Page</button>
+          <button class="quick-btn" id="save-selection">Save Selection</button>
+          <button class="quick-btn" id="screenshot">Screenshot</button>
+        </div>
+
+        <form id="saveForm">
+          <div class="form-group">
+            <label>Type</label>
+            <select id="type">
+              <option value="URL">URL</option>
+              <option value="NOTE">Note</option>
+              <option value="ARTICLE">Article</option>
+              <option value="TODO">To-Do</option>
+              <option value="CODE">Code</option>
+              <option value="PRODUCT">Product</option>
+              <option value="VIDEO">Video</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Title *</label>
+            <input type="text" id="title" required />
+          </div>
+
+          <div class="form-group">
+            <label>Description</label>
+            <textarea id="description" rows="3"></textarea>
+          </div>
+
+          <div class="form-group">
+            <label>URL</label>
+            <input type="url" id="url" />
+          </div>
+
+          <div class="form-group">
+            <label>Tags (comma-separated)</label>
+            <input type="text" id="tags" placeholder="work, important, ideas" />
+          </div>
+
+          <button type="submit" class="btn" id="submit-btn">
+            Save to Synapse
+          </button>
+        </form>
+
+        <div id="status" class="status"></div>
+      </div>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
