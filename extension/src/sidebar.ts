@@ -90,7 +90,8 @@ async function fetchSuggestions() {
 
     if (!response.ok) throw new Error('Failed to fetch content');
 
-    const allContent = await response.json();
+    const result = await response.json();
+    const allContent = result.data || result; // Handle both wrapped and unwrapped responses
     
     // Analyze and categorize suggestions
     const suggestions = analyzeSuggestions(allContent, currentContext);
@@ -113,7 +114,8 @@ function analyzeSuggestions(allContent: any[], context: any) {
     ...(context.extractedKeywords || []),
     context.domain,
     ...context.title?.toLowerCase().split(' ').filter((w: string) => w.length > 3) || []
-  ].map((term: string) => term.toLowerCase());
+  ].filter(term => term && typeof term === 'string')
+   .map((term: string) => term.toLowerCase());
 
   allContent.forEach((item: any) => {
     let score = 0;

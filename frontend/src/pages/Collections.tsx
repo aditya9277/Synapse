@@ -15,7 +15,6 @@ import {
   TextField,
   Box,
   Chip,
-  Fab,
   Menu,
   MenuItem,
   Alert,
@@ -26,7 +25,6 @@ import {
   MoreVert,
   Delete,
   Edit,
-  Share,
   Public,
   Lock,
 } from "@mui/icons-material";
@@ -49,13 +47,16 @@ const Collections: React.FC = () => {
     useState<Collection | null>(null);
 
   const {
-    data: collections = [],
+    data: collectionsResponse,
     isLoading,
     error,
   } = useQuery({
     queryKey: ["collections"],
-    queryFn: () => collectionsAPI.getAll(),
+    queryFn: collectionsAPI.getAll,
   });
+
+  // Extract collections array from response
+  const collections: Collection[] = collectionsResponse?.data?.data || [];
 
   const createMutation = useMutation({
     mutationFn: collectionsAPI.create,
@@ -134,9 +135,11 @@ const Collections: React.FC = () => {
 
   const handleTogglePublic = () => {
     if (selectedCollection) {
+      const newVisibility =
+        selectedCollection.visibility === "public" ? "private" : "public";
       updateMutation.mutate({
         id: selectedCollection.id,
-        data: { isPublic: !selectedCollection.isPublic },
+        data: { visibility: newVisibility },
       });
     }
   };
@@ -217,10 +220,16 @@ const Collections: React.FC = () => {
                     size="small"
                   />
                   <Chip
-                    icon={collection.isPublic ? <Public /> : <Lock />}
-                    label={collection.isPublic ? "Public" : "Private"}
+                    icon={
+                      collection.visibility === "public" ? <Public /> : <Lock />
+                    }
+                    label={
+                      collection.visibility === "public" ? "Public" : "Private"
+                    }
                     size="small"
-                    color={collection.isPublic ? "success" : "default"}
+                    color={
+                      collection.visibility === "public" ? "success" : "default"
+                    }
                   />
                 </Box>
               </CardContent>
@@ -244,7 +253,7 @@ const Collections: React.FC = () => {
           Edit
         </MenuItem>
         <MenuItem onClick={handleTogglePublic}>
-          {selectedCollection?.isPublic ? (
+          {selectedCollection?.visibility === "public" ? (
             <>
               <Lock sx={{ mr: 1 }} fontSize="small" />
               Make Private

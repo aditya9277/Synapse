@@ -3,19 +3,27 @@ import { CreateContentInput, UpdateContentInput, QueryContentInput } from '../sc
 import { AppError } from '../middleware/errorHandler';
 import { aiService } from './ai.service';
 import { ocrService } from './ocr.service';
-import path from 'path';
 
 const prisma = new PrismaClient();
 
 export const contentService = {
   async create(userId: string, data: CreateContentInput) {
-    // Use AI to enhance content
+    // Use AI to enhance content with tags, category, and metadata
     let metadata = data.metadata || {};
     let tags = data.tags || [];
     let category = data.category;
 
+    // Build content text for embedding and AI enhancement
+    const contentForAI = `${data.title}\n${data.description || ''}\n${data.contentText || ''}`.trim();
+
+    // Generate embedding for semantic search
+    let embeddingVector: number[] | null = null;
+    if (contentForAI) {
+      embeddingVector = await aiService.generateEmbedding(contentForAI);
+    }
+
     // Extract metadata and classify content using AI
-    if (data.url || data.contentText) {
+    if (data.url || data.contentText || data.description) {
       const aiEnhancement = await aiService.enhanceContent({
         type: data.type,
         title: data.title,
@@ -25,15 +33,41 @@ export const contentService = {
       });
 
       metadata = { ...metadata, ...aiEnhancement.metadata };
+      // store detected type from AI into metadata so downstream logic can pick it up
+      if (aiEnhancement.detectedType) {
+        (metadata as any).detectedType = aiEnhancement.detectedType;
+      }
+      // Merge AI-suggested tags with user-provided tags
       tags = [...new Set([...tags, ...aiEnhancement.suggestedTags])];
       category = category || aiEnhancement.category;
+      
+      console.log(`AI Enhancement for "${data.title}": category=${category}, tags=[${tags.join(', ')}]`);
+    }
+
+    // Decide final content type: prefer explicit non-URL provided type, otherwise use AI-detected type when available
+    let contentType = data.type;
+    try {
+      if (!contentType || contentType === 'URL') {
+        // aiEnhancement may be undefined if AI step skipped
+        // Use aiEnhancement.detectedType when available
+        // We called aiService.enhanceContent above only when url/contentText/description exist
+        // so try to reuse the variable via a best-effort lookup
+        // Note: aiEnhancement was declared inside the if block earlier; reconstruct by calling enhanceContent if needed
+        // but avoid calling twice — instead infer from metadata if present
+        if ((metadata as any).detectedType) {
+          contentType = (metadata as any).detectedType;
+        }
+        // If still not available, leave as provided (may be undefined)
+      }
+    } catch (err) {
+      console.warn('Content type detection fallback failed', err);
     }
 
     // Create content
     const content = await prisma.content.create({
       data: {
         userId,
-        type: data.type,
+        type: (contentType as any) || data.type,
         title: data.title,
         description: data.description,
         url: data.url,
@@ -46,6 +80,15 @@ export const contentService = {
         source: data.source
       }
     });
+
+    // Update embedding using raw SQL (Prisma doesn't support vector type directly)
+    if (embeddingVector) {
+      await prisma.$executeRaw`
+        UPDATE contents 
+        SET embedding = ${`[${embeddingVector.join(',')}]`}::vector
+        WHERE id = ${content.id}
+      `;
+    }
 
     // Update tag usage counts
     for (const tagName of tags) {
@@ -167,6 +210,20 @@ export const contentService = {
       data
     });
 
+    // Regenerate embedding if content text changed
+    if (data.title || data.description || data.contentText) {
+      const contentForAI = `${data.title || existing.title}\n${data.description || existing.description || ''}\n${data.contentText || existing.contentText || ''}`.trim();
+      const embeddingVector = await aiService.generateEmbedding(contentForAI);
+      
+      if (embeddingVector) {
+        await prisma.$executeRaw`
+          UPDATE contents 
+          SET embedding = ${`[${embeddingVector.join(',')}]`}::vector
+          WHERE id = ${id}
+        `;
+      }
+    }
+
     // Update tag usage if tags changed
     if (data.tags) {
       const newTags = data.tags.filter(tag => !existing.tags.includes(tag));
@@ -244,9 +301,8 @@ export const contentService = {
       title: data.title || file.originalname,
       description: data.description,
       contentText,
-      metadata,
+      metadata: { ...metadata, filePath: file.path },
       tags: data.tags,
-      filePath: file.path,
       thumbnailUrl: file.mimetype.startsWith('image/') ? `/uploads/${file.filename}` : undefined
     });
   }

@@ -32,9 +32,9 @@ export const collectionController = {
     const collections = await prisma.collection.findMany({
       where: { userId },
       include: {
-        items: {
-          include: {
-            content: true
+        _count: {
+          select: {
+            items: true
           }
         }
       },

@@ -45,6 +45,9 @@ export interface Collection {
   createdAt: string;
   updatedAt: string;
   items?: CollectionItem[];
+  _count?: {
+    items: number;
+  };
 }
 
 export interface CollectionItem {

@@ -61,10 +61,37 @@ const swaggerSpec = swaggerJsdoc(swaggerOptions);
 
 // Middleware
 app.use(helmet()); // Security headers
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
-  credentials: true
-}));
+
+// CORS configuration for frontend and Chrome extension
+const corsOptions = {
+  origin: function (origin: string | undefined, callback: Function) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Allow localhost origins
+    if (origin.includes('localhost')) return callback(null, true);
+    
+    // Allow Chrome extension origins
+    if (origin.startsWith('chrome-extension://')) return callback(null, true);
+    
+    // Allow the configured frontend origin
+    const allowedOrigin = process.env.CORS_ORIGIN || 'http://localhost:5173';
+    if (origin === allowedOrigin) return callback(null, true);
+    
+    // In development, allow any HTTPS origin for testing
+    if (process.env.NODE_ENV !== 'production' && origin.startsWith('https://')) {
+      return callback(null, true);
+    }
+    
+    // Reject other origins
+    callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+};
+
+app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(morgan('combined', { stream: { write: (message) => logger.info(message.trim()) } }));

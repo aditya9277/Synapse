@@ -215,16 +215,22 @@ async function extractContentData(info: chrome.contextMenus.OnClickData, tab: ch
     case 'save-page':
       // Get page metadata from content script
       const pageData = await getPageMetadata(tab?.id);
-      return {
+      const result: any = {
         ...baseData,
         type: 'URL',
         title: tab?.title || 'Untitled',
         url: tab?.url,
         description: pageData?.description || `Saved from ${new URL(tab?.url || '').hostname}`,
-        thumbnailUrl: pageData?.image,
         contentText: pageData?.excerpt,
         tags: pageData?.keywords || []
       };
+      
+      // Only add thumbnailUrl if it's a valid URL
+      if (pageData?.image && isValidUrl(pageData.image)) {
+        result.thumbnailUrl = pageData.image;
+      }
+      
+      return result;
 
     case 'save-selection':
     case 'save-as-note':
@@ -264,14 +270,20 @@ async function extractContentData(info: chrome.contextMenus.OnClickData, tab: ch
       };
 
     case 'save-image':
-      return {
+      const imageResult: any = {
         ...baseData,
         type: 'IMAGE',
         url: info.srcUrl,
-        thumbnailUrl: info.srcUrl,
         title: extractImageName(info.srcUrl) || `Image from ${tab?.title}`,
         description: `Source: ${tab?.url}`
       };
+      
+      // Only add thumbnailUrl if it's a valid URL
+      if (info.srcUrl && isValidUrl(info.srcUrl)) {
+        imageResult.thumbnailUrl = info.srcUrl;
+      }
+      
+      return imageResult;
 
     default:
       return {
@@ -357,6 +369,17 @@ function extractImageName(url: string | undefined): string | null {
   }
 }
 
+// Validate if string is a valid URL
+function isValidUrl(url: string): boolean {
+  if (!url || typeof url !== 'string') return false;
+  try {
+    new URL(url);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Handle keyboard shortcut
 if (isAPIAvailable(chrome.commands)) {
   chrome.commands.onCommand.addListener(async (command) => {
@@ -369,64 +392,147 @@ if (isAPIAvailable(chrome.commands)) {
         return;
       }
 
-      // Show inline notification
-      if (tab?.id && isAPIAvailable(chrome.scripting)) {
-        await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          func: () => {
-            const toast = document.createElement('div');
-            toast.textContent = '⏳ Saving to Synapse...';
-            toast.style.cssText = `
-              position: fixed; top: 20px; right: 20px; z-index: 999999;
-              background: #2196F3; color: white; padding: 16px 24px;
-              border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-              font-family: system-ui; font-size: 14px; font-weight: 500;
-            `;
-            document.body.appendChild(toast);
-            setTimeout(() => toast.remove(), 2000);
-          }
-        });
-      }
+      try {
+        // Use the same extraction logic as context menu
+        const info = {
+          menuItemId: 'save-page',
+          pageUrl: tab.url || '',
+          editable: false
+        } as chrome.contextMenus.OnClickData;
+        
+        const contentData = await extractContentData(info, tab);
+        console.log('Keyboard shortcut - content data extracted:', contentData);
 
-      const pageData = await getPageMetadata(tab.id);
-      await saveContent(token, {
-        type: 'URL',
-        title: tab.title || 'Untitled',
-        url: tab.url,
-        description: pageData?.description,
-        thumbnailUrl: pageData?.image,
-        source: 'chrome-extension-keyboard'
-      });
+        // Show inline notification
+        if (tab?.id && isAPIAvailable(chrome.scripting)) {
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: () => {
+              const toast = document.createElement('div');
+              toast.id = 'synapse-saving-toast';
+              toast.textContent = '⏳ Saving to Synapse...';
+              toast.style.cssText = `
+                position: fixed; top: 20px; right: 20px; z-index: 999999;
+                background: #2196F3; color: white; padding: 16px 24px;
+                border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                font-family: system-ui; font-size: 14px; font-weight: 500;
+              `;
+              document.body.appendChild(toast);
+            }
+          });
+        }
 
-      // Show success toast
-      if (tab?.id && isAPIAvailable(chrome.scripting)) {
-        await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          func: () => {
-            const toast = document.createElement('div');
-            toast.innerHTML = '✅ Saved to Synapse!';
-            toast.style.cssText = `
-              position: fixed; top: 20px; right: 20px; z-index: 999999;
-              background: #4CAF50; color: white; padding: 16px 24px;
-              border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-              font-family: system-ui; font-size: 14px; font-weight: 500;
-              transition: all 0.3s ease;
-            `;
-            document.body.appendChild(toast);
-            setTimeout(() => {
-              toast.style.opacity = '0';
-              setTimeout(() => toast.remove(), 300);
-            }, 2500);
+        // Save using the enhanced content data
+        const savedContent = await saveContent(token, contentData);
+        console.log('Keyboard shortcut - content saved:', savedContent);
+
+        // Show success toast
+        if (tab?.id && isAPIAvailable(chrome.scripting)) {
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: (title: string) => {
+              const existingToast = document.getElementById('synapse-saving-toast');
+              if (existingToast) existingToast.remove();
+              
+              const toast = document.createElement('div');
+              toast.innerHTML = `✅ Saved "${title.substring(0, 30)}..." to Synapse!`;
+              toast.style.cssText = `
+                position: fixed; top: 20px; right: 20px; z-index: 999999;
+                background: #4CAF50; color: white; padding: 16px 24px;
+                border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                font-family: system-ui; font-size: 14px; font-weight: 500;
+                transition: all 0.3s ease;
+              `;
+              document.body.appendChild(toast);
+              setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 300);
+              }, 2500);
+            },
+            args: [contentData.title]
+          });
+        }
+
+        // Show Chrome notification
+        if (isAPIAvailable(chrome.notifications)) {
+          try {
+            chrome.notifications.create({
+              type: 'basic',
+              iconUrl: 'icon.png',
+              title: '✅ Saved to Synapse!',
+              message: `"${contentData.title?.substring(0, 50)}..." saved successfully`,
+              buttons: [
+                { title: '👁️ View' },
+                { title: '↩️ Undo' }
+              ],
+              requireInteraction: false
+            }, (notificationId) => {
+              if (!chrome.runtime.lastError) {
+                recentSaves.set(notificationId, { 
+                  contentId: savedContent.id, 
+                  data: contentData 
+                });
+              }
+            });
+          } catch (error) {
+            console.warn('Failed to create notification:', error);
           }
-        });
+        }
+
+      } catch (error: any) {
+        console.error('Keyboard shortcut save error:', error);
+        
+        // Show error toast
+        if (tab?.id && isAPIAvailable(chrome.scripting)) {
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: (errorMsg: string) => {
+              const existingToast = document.getElementById('synapse-saving-toast');
+              if (existingToast) existingToast.remove();
+              
+              const toast = document.createElement('div');
+              toast.innerHTML = `❌ Failed to save: ${errorMsg}`;
+              toast.style.cssText = `
+                position: fixed; top: 20px; right: 20px; z-index: 999999;
+                background: #f44336; color: white; padding: 16px 24px;
+                border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                font-family: system-ui; font-size: 14px; font-weight: 500;
+              `;
+              document.body.appendChild(toast);
+              setTimeout(() => toast.remove(), 3000);
+            },
+            args: [error.message || 'Unknown error']
+          });
+        }
+        showErrorNotification(error.message);
       }
     } else if (command === 'open-sidebar') {
-      // Try to open the sidebar panel (if supported), otherwise open as popup
+      // Inject content script and show inline sidebar
       try {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (chrome.sidePanel && tab.windowId) {
-          chrome.sidePanel.open({ windowId: tab.windowId });
-        } else {
+        
+        if (!tab?.id) {
+          console.error('No active tab found');
+          return;
+        }
+
+        // Inject the content script if not already injected
+        try {
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            files: ['content-sidebar.js']
+          });
+        } catch (error) {
+          // Script might already be injected, which is fine
+          console.log('Content script may already be injected:', error);
+        }
+
+        // Send message to toggle the sidebar
+        try {
+          await chrome.tabs.sendMessage(tab.id, { action: 'toggle-sidebar' });
+        } catch (error) {
+          console.error('Failed to send message to content script:', error);
+          
           // Fallback: Open sidebar as a new tab
           chrome.tabs.create({ 
             url: chrome.runtime.getURL('sidebar.html'),
@@ -436,6 +542,7 @@ if (isAPIAvailable(chrome.commands)) {
         }
       } catch (error) {
         console.error('Failed to open sidebar:', error);
+        
         // Final fallback: Open as popup window
         if (isAPIAvailable(chrome.windows)) {
           chrome.windows.create({
@@ -586,6 +693,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
   
   if (request.action === 'getToken') {
+    getAuthToken().then(token => {
+      sendResponse({ token });
+    });
+    return true;
+  }
+  
+  if (request.action === 'getAuthToken') {
     getAuthToken().then(token => {
       sendResponse({ token });
     });

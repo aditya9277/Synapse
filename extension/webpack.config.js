@@ -6,6 +6,7 @@ module.exports = {
     background: './src/background.ts',
     content: './src/content.ts',
     'content-sync': './src/content-sync.ts',
+    'content-sidebar': './src/content-sidebar.ts',
     popup: './src/popup.ts',
     sidebar: './src/sidebar.ts'
   },
